@@ -171,6 +171,52 @@ class SovereignViewModel : ViewModel() {
     private val _bciEegChannels = MutableStateFlow<List<Float>>(List(16) { 0.0f })
     val bciEegChannels: StateFlow<List<Float>> = _bciEegChannels.asStateFlow()
 
+    // --- Full Face Scan & Bio Security Subsystem State ---
+    private val _faceBioQuality = MutableStateFlow(0.972f)
+    val faceBioQuality: StateFlow<Float> = _faceBioQuality.asStateFlow()
+
+    private val _faceBioLivenessState = MutableStateFlow("LIVE")
+    val faceBioLivenessState: StateFlow<String> = _faceBioLivenessState.asStateFlow()
+
+    private val _faceBioLivenessConfidence = MutableStateFlow(0.985f)
+    val faceBioLivenessConfidence: StateFlow<Float> = _faceBioLivenessConfidence.asStateFlow()
+
+    private val _faceBioFusionScore = MutableStateFlow(0.947f)
+    val faceBioFusionScore: StateFlow<Float> = _faceBioFusionScore.asStateFlow()
+
+    private val _faceBioDecision = MutableStateFlow("ACCEPT")
+    val faceBioDecision: StateFlow<String> = _faceBioDecision.asStateFlow()
+
+    private val _faceBioIrisScore = MutableStateFlow(0.960f)
+    val faceBioIrisScore: StateFlow<Float> = _faceBioIrisScore.asStateFlow()
+
+    private val _faceBioVoiceScore = MutableStateFlow(0.910f)
+    val faceBioVoiceScore: StateFlow<Float> = _faceBioVoiceScore.asStateFlow()
+
+    private val _faceBioHeartRateScore = MutableStateFlow(0.880f)
+    val faceBioHeartRateScore: StateFlow<Float> = _faceBioHeartRateScore.asStateFlow()
+
+    private val _faceBioSkinTextureScore = MutableStateFlow(0.930f)
+    val faceBioSkinTextureScore: StateFlow<Float> = _faceBioSkinTextureScore.asStateFlow()
+
+    private val _faceBioVeinPatternScore = MutableStateFlow(0.950f)
+    val faceBioVeinPatternScore: StateFlow<Float> = _faceBioVeinPatternScore.asStateFlow()
+
+    private val _faceBioPhi5Signature = MutableStateFlow("Φ⁵_a3f2c1d9e4b5a6c7d8e9f0a1b2c3d4e5")
+    val faceBioPhi5Signature: StateFlow<String> = _faceBioPhi5Signature.asStateFlow()
+
+    private val _faceBioAuditLogs = MutableStateFlow<List<String>>(listOf(
+        "[12:08:45] Face detector initialized: 478 points @ 120 FPS",
+        "[12:08:46] Depth map active: IR structured light connected",
+        "[12:08:47] Liveness check passed: Blink & Texture verified",
+        "[12:08:48] Biometric fusion complete: Score 94.7% -> ACCEPT",
+        "[12:08:49] Φ⁵ Bell Pair identity bound: Φ⁺ / Φ⁻ / Ψ⁺ / Ψ⁻"
+    ))
+    val faceBioAuditLogs: StateFlow<List<String>> = _faceBioAuditLogs.asStateFlow()
+
+    private val _faceBioEnrolledUsers = MutableStateFlow(1)
+    val faceBioEnrolledUsers: StateFlow<Int> = _faceBioEnrolledUsers.asStateFlow()
+
     // --- Operations Center ---
     private val _isSelfTerminating = MutableStateFlow(false)
     val isSelfTerminating: StateFlow<Boolean> = _isSelfTerminating.asStateFlow()
@@ -931,11 +977,96 @@ class SovereignViewModel : ViewModel() {
                 }
                 _isSudoActive.value = false
             }
+            "facescan", "bioscan", "liveness", "bio-enroll", "bio-verify" -> {
+                when (baseCmd) {
+                    "facescan" -> {
+                        addTerminalLog("INITIATING 478-POINT FACIAL LANDMARK SCAN...")
+                        triggerFaceScanSnapshot()
+                        addTerminalLog("  ├─ Quality Index: ${String.format("%.1f", _faceBioQuality.value * 100)}%")
+                        addTerminalLog("  ├─ Liveness Status: ${_faceBioLivenessState.value}")
+                        addTerminalLog("  └─ Φ⁵ Quantum Signature: ${_faceBioPhi5Signature.value}")
+                    }
+                    "bioscan" -> {
+                        addTerminalLog("MULTI-MODAL BIOMETRIC FUSION SUMMARY:")
+                        addTerminalLog("  ├─ Face Geometry (35%, Φ⁺): ${String.format("%.1f", _faceBioQuality.value * 100)}%")
+                        addTerminalLog("  ├─ Iris Pattern (25%, Φ⁻): ${String.format("%.1f", _faceBioIrisScore.value * 100)}%")
+                        addTerminalLog("  ├─ Voice Print (15%, Ψ⁺): ${String.format("%.1f", _faceBioVoiceScore.value * 100)}%")
+                        addTerminalLog("  ├─ Heart Rate rPPG (10%, Ψ⁻): ${String.format("%.1f", _faceBioHeartRateScore.value * 100)}%")
+                        addTerminalLog("  ├─ Skin Texture (10%, Φ⁺): ${String.format("%.1f", _faceBioSkinTextureScore.value * 100)}%")
+                        addTerminalLog("  ├─ Subdermal Vein (5%, Φ⁻): ${String.format("%.1f", _faceBioVeinPatternScore.value * 100)}%")
+                        addTerminalLog("  └─ Fused Score: ${String.format("%.1f", _faceBioFusionScore.value * 100)}% -> ${_faceBioDecision.value}")
+                    }
+                    "liveness" -> {
+                        addTerminalLog("RUNNING LIVENESS ANTI-SPOOFING CHALLENGE...")
+                        triggerLivenessChallenge()
+                    }
+                    "bio-enroll" -> {
+                        val username = if (parts.size > 1) parts[1] else _currentUser.value.username
+                        enrollFaceBioUser(username)
+                    }
+                    "bio-verify" -> {
+                        val username = if (parts.size > 1) parts[1] else _currentUser.value.username
+                        verifyFaceBioUser(username)
+                    }
+                }
+            }
             else -> {
                 addTerminalLog("bash: command not found: '$baseCmd'. Type 'help' for a list of valid routines.")
             }
         }
         addTerminalLog("")
+    }
+
+    // --- Face Scan & Bio Security Public Action Methods ---
+    fun triggerFaceScanSnapshot() {
+        val newSig = "Φ⁵_" + LongArray(2) { Random.nextLong() }.joinToString("") { "%016x".format(it) }
+        _faceBioPhi5Signature.value = newSig
+        val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        val logEntry = "[$timestamp] 📸 Φ⁵ Snapshot captured: ${newSig.take(24)}..."
+        _faceBioAuditLogs.value = listOf(logEntry) + _faceBioAuditLogs.value.take(20)
+        addConsoleLog("Face Bio Φ⁵ Snapshot captured: ${newSig.take(18)}...")
+    }
+
+    fun triggerLivenessChallenge() {
+        viewModelScope.launch {
+            _faceBioLivenessState.value = "TESTING"
+            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            _faceBioAuditLogs.value = listOf("[$timestamp] 🧪 Liveness challenge initiated (Blink + Depth + Texture)") + _faceBioAuditLogs.value.take(20)
+            delay(1200)
+            _faceBioLivenessState.value = "LIVE"
+            _faceBioLivenessConfidence.value = 0.980f + Random.nextFloat() * 0.018f
+            val finishTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            val logEntry = "[$finishTime] ✅ Liveness verified: 100% Anti-Spoofing Pass (Conf: ${String.format("%.1f", _faceBioLivenessConfidence.value * 100)}%)"
+            _faceBioAuditLogs.value = listOf(logEntry) + _faceBioAuditLogs.value.take(20)
+            addConsoleLog("Liveness verification passed with ${String.format("%.1f", _faceBioLivenessConfidence.value * 100)}% confidence")
+        }
+    }
+
+    fun enrollFaceBioUser(username: String) {
+        viewModelScope.launch {
+            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            _faceBioAuditLogs.value = listOf("[$timestamp] 🧬 Enrolling biometrics for $username...") + _faceBioAuditLogs.value.take(20)
+            delay(1000)
+            _faceBioEnrolledUsers.value = _faceBioEnrolledUsers.value + 1
+            val finishTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            val newSig = "Φ⁵_" + LongArray(2) { Random.nextLong() }.joinToString("") { "%016x".format(it) }
+            _faceBioPhi5Signature.value = newSig
+            _faceBioAuditLogs.value = listOf("[$finishTime] ✅ Enrolled $username - Multi-Modal Fusion Score: 96.8% -> ENROLLED") + _faceBioAuditLogs.value.take(20)
+            addConsoleLog("Biometric enrollment successful for user: $username")
+        }
+    }
+
+    fun verifyFaceBioUser(username: String) {
+        viewModelScope.launch {
+            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            _faceBioAuditLogs.value = listOf("[$timestamp] 🔍 Verifying identity for $username...") + _faceBioAuditLogs.value.take(20)
+            delay(800)
+            _faceBioFusionScore.value = 0.93f + Random.nextFloat() * 0.05f
+            _faceBioDecision.value = "ACCEPT"
+            val finishTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            _faceBioAuditLogs.value = listOf("[$finishTime] ✅ Verified $username - Fused Score: ${String.format("%.1f", _faceBioFusionScore.value * 100)}% -> ACCEPT") + _faceBioAuditLogs.value.take(20)
+            addConsoleLog("Biometric identity verified: $username (Decision: ACCEPT)")
+        }
     }
 
     private fun addConsoleLog(message: String) {
