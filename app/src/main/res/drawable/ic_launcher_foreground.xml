@@ -1,0 +1,36 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Orbit Time Crystal Ring -->
+    <path
+        android:strokeColor="#00FF88"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M 54,20 A 34,34 0 1 1 53.9,20 Z" />
+        
+    <!-- Secondary Outer Dotted Boundary Ring -->
+    <path
+        android:strokeColor="#FF00FF"
+        android:strokeWidth="1.2"
+        android:fillColor="#00000000"
+        android:pathData="M 54,14 A 40,40 0 1 1 53.9,14 Z" />
+
+    <!-- Center Cyber Omega Core Symbol -->
+    <path
+        android:fillColor="#00D9FF"
+        android:pathData="M 32,68 L 44,68 C 45,55 42,44 54,44 C 66,44 63,55 64,68 L 76,68 L 76,64 L 67,64 C 65,49 59,38 54,38 C 49,38 43,49 41,64 L 32,64 Z" />
+        
+    <!-- Glowing Node Connectors -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 54,17 A 3,3 0 1 1 53.9,17 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 20,54 A 3,3 0 1 1 19.9,54 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 88,54 A 3,3 0 1 1 87.9,54 Z" />
+</vector>

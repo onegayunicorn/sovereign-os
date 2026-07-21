@@ -1,0 +1,730 @@
+package com.example.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.data.SovereignData
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.random.Random
+
+// --- User Management Models ---
+data class SovereignUser(
+    val username: String,
+    val passwordHash: String,
+    val isSudoer: Boolean = false,
+    val homeDir: String,
+    var permissions: String = "rwx" // r, w, x (e.g. "rwx", "r-x", "r--")
+)
+
+// --- Package Manager Models ---
+data class SovereignPackage(
+    val name: String,
+    val version: String,
+    val description: String,
+    val sizeKb: Int,
+    val category: String,
+    val isInstalled: Boolean = false
+)
+
+enum class SovereignTab {
+    BOOT, DASHBOARD, FILESYSTEM, OPERATIONS, BROWSER, SETTINGS
+}
+
+class SovereignViewModel : ViewModel() {
+
+    // Current navigation tab
+    private val _currentTab = MutableStateFlow(SovereignTab.BOOT)
+    val currentTab: StateFlow<SovereignTab> = _currentTab.asStateFlow()
+
+    // --- Theme Switcher State ---
+    private val _isLightTheme = MutableStateFlow(false)
+    val isLightTheme: StateFlow<Boolean> = _isLightTheme.asStateFlow()
+
+    // --- User Management State ---
+    private val _users = MutableStateFlow<List<SovereignUser>>(listOf(
+        SovereignUser("operator", "admin123", true, "home/operator", "rwx"),
+        SovereignUser("guest", "guest123", false, "home/guest", "r-x")
+    ))
+    val users: StateFlow<List<SovereignUser>> = _users.asStateFlow()
+
+    private val _currentUser = MutableStateFlow<SovereignUser>(_users.value.first())
+    val currentUser: StateFlow<SovereignUser> = _currentUser.asStateFlow()
+
+    // --- Package Manager State ---
+    private val _packages = MutableStateFlow<List<SovereignPackage>>(listOf(
+        SovereignPackage("sovereign-editor", "v1.2.0", "Advanced file editor with syntax highlighting & find-replace.", 340, "Development", false),
+        SovereignPackage("sovereign-browser", "v2.1.4", "Offline sandbox environment web browser application.", 890, "Utility", false),
+        SovereignPackage("time-stabilizer", "v1.0.1", "Quantum calibration daemon for Schumann phase locking.", 120, "System", true),
+        SovereignPackage("mesh-optimizer", "v0.8.5", "Kademlia DHT routing matrix debugger utility.", 180, "Network", false)
+    ))
+    val packages: StateFlow<List<SovereignPackage>> = _packages.asStateFlow()
+
+    // --- Terminal / Command Line Interface State ---
+    private val _terminalLogs = MutableStateFlow<List<String>>(listOf(
+        "Welcome to Sovereign OS Terminal v1.0.0-omega",
+        "System is running on secure kernel build 6.8-sovereign-hardened",
+        "Type 'help' to view the list of available commands.",
+        "Active Session: operator@sovereign",
+        ""
+    ))
+    val terminalLogs: StateFlow<List<String>> = _terminalLogs.asStateFlow()
+
+    private val _isSudoActive = MutableStateFlow(false)
+    val isSudoActive: StateFlow<Boolean> = _isSudoActive.asStateFlow()
+
+    // --- Boot Sequence State ---
+    private val _isBooted = MutableStateFlow(false)
+    val isBooted: StateFlow<Boolean> = _isBooted.asStateFlow()
+
+    private val _isBooting = MutableStateFlow(false)
+    val isBooting: StateFlow<Boolean> = _isBooting.asStateFlow()
+
+    private val _bootProgress = MutableStateFlow(0f)
+    val bootProgress: StateFlow<Float> = _bootProgress.asStateFlow()
+
+    private val _currentBootingStage = MutableStateFlow("")
+    val currentBootingStage: StateFlow<String> = _currentBootingStage.asStateFlow()
+
+    private val _bootLogs = MutableStateFlow<List<String>>(emptyList())
+    val bootLogs: StateFlow<List<String>> = _bootLogs.asStateFlow()
+
+    // --- Filesystem State ---
+    private val _files = MutableStateFlow<Map<String, String>>(SovereignData.defaultFiles)
+    val files: StateFlow<Map<String, String>> = _files.asStateFlow()
+
+    private val _selectedFilePath = MutableStateFlow<String?>("README.txt")
+    val selectedFilePath: StateFlow<String?> = _selectedFilePath.asStateFlow()
+
+    private val _selectedFileContent = MutableStateFlow("")
+    val selectedFileContent: StateFlow<String> = _selectedFileContent.asStateFlow()
+
+    // --- Live Metrics (Dashboard) State ---
+    private val _coherence = MutableStateFlow(0.947f)
+    val coherence: StateFlow<Float> = _coherence.asStateFlow()
+
+    private val _timeCrystalFrequency = MutableStateFlow(7.830)
+    val timeCrystalFrequency: StateFlow<Double> = _timeCrystalFrequency.asStateFlow()
+
+    private val _timeCrystalRadius = MutableStateFlow(1.000000)
+    val timeCrystalRadius: StateFlow<Double> = _timeCrystalRadius.asStateFlow()
+
+    private val _schumannLock = MutableStateFlow(true)
+    val schumannLock: StateFlow<Boolean> = _schumannLock.asStateFlow()
+
+    private val _peerCount = MutableStateFlow(64)
+    val peerCount: StateFlow<Int> = _peerCount.asStateFlow()
+
+    private val _consensusCount = MutableStateFlow(43)
+    val consensusCount: StateFlow<Int> = _consensusCount.asStateFlow()
+
+    private val _barometerHpa = MutableStateFlow(1013.25f)
+    val barometerHpa: StateFlow<Float> = _barometerHpa.asStateFlow()
+
+    private val _bciAttention = MutableStateFlow(0.87f)
+    val bciAttention: StateFlow<Float> = _bciAttention.asStateFlow()
+
+    private val _npuLoad = MutableStateFlow(34)
+    val npuLoad: StateFlow<Int> = _npuLoad.asStateFlow()
+
+    private val _coherenceHistory = MutableStateFlow<List<Float>>(List(30) { 0.947f })
+    val coherenceHistory: StateFlow<List<Float>> = _coherenceHistory.asStateFlow()
+
+    private val _consoleLogs = MutableStateFlow<List<String>>(listOf("System initialised and idling."))
+    val consoleLogs: StateFlow<List<String>> = _consoleLogs.asStateFlow()
+
+    // --- Operations Center ---
+    private val _isSelfTerminating = MutableStateFlow(false)
+    val isSelfTerminating: StateFlow<Boolean> = _isSelfTerminating.asStateFlow()
+
+    private val _selfTerminateStep = MutableStateFlow(0)
+    val selfTerminateStep: StateFlow<Int> = _selfTerminateStep.asStateFlow()
+
+    private val _terminateLogs = MutableStateFlow<List<String>>(emptyList())
+    val terminateLogs: StateFlow<List<String>> = _terminateLogs.asStateFlow()
+
+    private val _isBuildingIso = MutableStateFlow(false)
+    val isBuildingIso: StateFlow<Boolean> = _isBuildingIso.asStateFlow()
+
+    private val _isoBuildProgress = MutableStateFlow(0f)
+    val isoBuildProgress: StateFlow<Float> = _isoBuildProgress.asStateFlow()
+
+    private val _isoBuildLogs = MutableStateFlow<List<String>>(emptyList())
+    val isoBuildLogs: StateFlow<List<String>> = _isoBuildLogs.asStateFlow()
+
+    // --- DNA Sequence ---
+    private val _dnaSequence = MutableStateFlow("ATCGGCATATCG")
+    val dnaSequence: StateFlow<String> = _dnaSequence.asStateFlow()
+
+    private var metricsJob: Job? = null
+    private var logsJob: Job? = null
+
+    init {
+        // Pre-load default selected file content
+        updateSelectedFile("README.txt")
+        startMetricsJob()
+    }
+
+    fun selectTab(tab: SovereignTab) {
+        _currentTab.value = tab
+    }
+
+    // Trigger full boot sequence simulation
+    fun triggerBoot() {
+        if (_isBooting.value) return
+        _isBooting.value = true
+        _isBooted.value = false
+        _bootProgress.value = 0f
+        _bootLogs.value = listOf("🔌 POWER-ON SEQUENCE INITIATED", "==================================================")
+
+        viewModelScope.launch {
+            val stages = SovereignData.bootStageMessages.keys.toList()
+            val totalSteps = stages.size
+            
+            stages.forEachIndexed { index, stageTitle ->
+                _currentBootingStage.value = stageTitle
+                val stageLines = SovereignData.bootStageMessages[stageTitle] ?: emptyList()
+                
+                // Add stage title
+                addBootLog("📌 $stageTitle")
+                delay(200)
+
+                // Add log statements
+                stageLines.forEach { line ->
+                    addBootLog("   ├─ $line")
+                    delay(150 + Random.nextLong(100))
+                }
+
+                // Update boot progress
+                val nextProgress = (index + 1).toFloat() / totalSteps.toFloat()
+                _bootProgress.value = nextProgress
+                delay(150)
+            }
+
+            _isBooted.value = true
+            _isBooting.value = false
+            addBootLog("🏁 SYSTEM BOOT SUCCESSFUL - LOADED IN MEMORY")
+            delay(500)
+            _currentTab.value = SovereignTab.DASHBOARD
+        }
+    }
+
+    private fun addBootLog(log: String) {
+        _bootLogs.value = _bootLogs.value + log
+    }
+
+    // --- Virtual Filesystem Actions ---
+    fun updateSelectedFile(path: String) {
+        _selectedFilePath.value = path
+        _selectedFileContent.value = _files.value[path] ?: ""
+    }
+
+    fun saveSelectedFile(newContent: String) {
+        val path = _selectedFilePath.value ?: return
+        val updatedMap = _files.value.toMutableMap()
+        updatedMap[path] = newContent
+        _files.value = updatedMap
+        _selectedFileContent.value = newContent
+        
+        addConsoleLog("Write success: $path (${newContent.length} bytes)")
+
+        // Dynamic behavior check: If the user edits config file variables, adjust dashboard parameters!
+        if (path == "system/etc/sovereign/config.yaml") {
+            try {
+                if (newContent.contains("schumann_lock_target:")) {
+                    val line = newContent.lines().firstOrNull { it.contains("schumann_lock_target:") }
+                    val targetFreq = line?.substringAfter("schumann_lock_target:")?.trim()?.toDoubleOrNull()
+                    if (targetFreq != null) {
+                        _timeCrystalFrequency.value = targetFreq
+                        addConsoleLog("Time Crystal calibrated to target frequency: $targetFreq Hz")
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore parse errors gracefully
+            }
+        } else if (path == "system/etc/sovereign/mesh_config.yaml") {
+            try {
+                if (newContent.contains("max_peers:")) {
+                    val peersLine = newContent.lines().firstOrNull { it.contains("max_peers:") }
+                    val maxPeers = peersLine?.substringAfter("max_peers:")?.trim()?.toIntOrNull()
+                    if (maxPeers != null) {
+                        _peerCount.value = maxPeers
+                        _consensusCount.value = (maxPeers * 0.67).toInt()
+                        addConsoleLog("P2P Mesh limits updated: Max Peers = $maxPeers")
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore parse errors
+            }
+        } else if (path == "data/dna_sequences/user_dna.dat") {
+            val sanitized = newContent.trim().uppercase(Locale.ROOT).filter { it in "ATCG" }
+            if (sanitized.isNotEmpty()) {
+                _dnaSequence.value = sanitized
+                addConsoleLog("Mapped active DNA payload sequence: $sanitized")
+            }
+        }
+    }
+
+    // Update active DNA payload sequence
+    fun updateDnaSequence(sequence: String) {
+        val sanitized = sequence.uppercase(Locale.ROOT).filter { it in "ATCG" }
+        if (sanitized.isNotEmpty()) {
+            _dnaSequence.value = sanitized
+            
+            // Auto update user_dna.dat content if editable
+            val updatedMap = _files.value.toMutableMap()
+            updatedMap["data/dna_sequences/user_dna.dat"] = sanitized
+            _files.value = updatedMap
+            if (_selectedFilePath.value == "data/dna_sequences/user_dna.dat") {
+                _selectedFileContent.value = sanitized
+            }
+            
+            addConsoleLog("Mapped active DNA payload sequence: $sanitized")
+        }
+    }
+
+    // Trigger ISO build script simulator
+    fun triggerBuildIso() {
+        if (_isBuildingIso.value) return
+        _isBuildingIso.value = true
+        _isoBuildProgress.value = 0f
+        _isoBuildLogs.value = listOf("[+] Initialising Sovereign Ω Reproductive ISO Builder...")
+
+        viewModelScope.launch {
+            val scripts = listOf(
+                "[+] Allocating 8GB empty block volume...",
+                "[+] Creating GPT boundary offsets [EFI: 512MB, Root: 4GB, Data: remainder]...",
+                "[+] Formatting partition tables (FAT32, ext4, f2fs)...",
+                "[+] Replicating Layer-00 Boot Chain parameters...",
+                "[+] Injecting encrypted System Overlay modules...",
+                "[+] Compiling reproducible sovereign_os_bootable.iso payload...",
+                "[+] Hardening binary segments with OMEGA defenses...",
+                "[+] SHA-256 Checksum generated: e8e5df9a978f6c47046ea8b8bpxlqd",
+                "[+] Sovereign OS bootable image compilation SUCCESSFUL!"
+            )
+            val stepSize = scripts.size
+
+            scripts.forEachIndexed { i, logLine ->
+                delay(300 + Random.nextLong(200))
+                _isoBuildLogs.value = _isoBuildLogs.value + logLine
+                _isoBuildProgress.value = (i + 1).toFloat() / stepSize.toFloat()
+            }
+            _isBuildingIso.value = false
+            addConsoleLog("SOVEREIGN OS ISO Compilation Successful")
+        }
+    }
+
+    // Atomic Self-Terminate Sequence
+    fun triggerSelfTerminate() {
+        if (_isSelfTerminating.value) return
+        _isSelfTerminating.value = true
+        _selfTerminateStep.value = 0
+        _terminateLogs.value = listOf("⚠️ CRITICAL ALARM: SELF-TERMINATION SEQUENCE INITIATED")
+
+        viewModelScope.launch {
+            val wipeSteps = listOf(
+                "STG-1: Broadcasting atomic memory wipe warning to peer nodes",
+                "STG-2: Terminating sovereign-mesh P2P socket handles",
+                "STG-3: Unmounting ext4 system and f2fs data volumes",
+                "STG-4: Overwriting Time Crystal phase-lock registers to null",
+                "STG-5: Initiating 7-pass secure shredding on local sector arrays",
+                "STG-6: Zero-filling registers in the ATECC608A secure enclave",
+                "STG-7: Hard rebooting Moto G35 system processor kernel",
+                "💀 SYSTEM TERMINATION COMPLETE. REBOOTING PROCESSOR."
+            )
+
+            wipeSteps.forEachIndexed { idx, log ->
+                delay(800 + Random.nextLong(400))
+                _selfTerminateStep.value = idx + 1
+                _terminateLogs.value = _terminateLogs.value + log
+            }
+
+            delay(1500)
+            // Hard reboot reset
+            _isSelfTerminating.value = false
+            _isBooted.value = false
+            _bootProgress.value = 0f
+            _bootLogs.value = emptyList()
+            _coherence.value = 0.947f
+            _currentTab.value = SovereignTab.BOOT
+        }
+    }
+
+    fun toggleTheme() {
+        _isLightTheme.value = !_isLightTheme.value
+    }
+
+    fun addUser(username: String, passwordHash: String, isSudoer: Boolean, permissions: String) {
+        val newUser = SovereignUser(username, passwordHash, isSudoer, "home/$username", permissions)
+        _users.value = _users.value + newUser
+        
+        // Add to virtual filesystem
+        val path = "home/$username/welcome.txt"
+        val content = "Welcome to your home directory, $username!\nPermissions: $permissions"
+        val updatedFiles = _files.value.toMutableMap()
+        updatedFiles[path] = content
+        _files.value = updatedFiles
+        
+        addConsoleLog("Created user account: $username")
+    }
+
+    fun changePassword(username: String, newPass: String) {
+        val list = _users.value.toMutableList()
+        val idx = list.indexOfFirst { it.username == username }
+        if (idx != -1) {
+            list[idx] = list[idx].copy(passwordHash = newPass)
+            _users.value = list
+            addConsoleLog("Changed password for user: $username")
+        }
+    }
+
+    fun changePermissions(username: String, permissions: String) {
+        val list = _users.value.toMutableList()
+        val idx = list.indexOfFirst { it.username == username }
+        if (idx != -1) {
+            list[idx] = list[idx].copy(permissions = permissions)
+            _users.value = list
+            addConsoleLog("Updated permissions for $username -> $permissions")
+        }
+    }
+
+    fun installPackage(pkgName: String) {
+        val list = _packages.value.toMutableList()
+        val idx = list.indexOfFirst { it.name == pkgName }
+        if (idx != -1) {
+            list[idx] = list[idx].copy(isInstalled = true)
+            _packages.value = list
+            addConsoleLog("Installed package: $pkgName")
+        }
+    }
+
+    fun uninstallPackage(pkgName: String) {
+        val list = _packages.value.toMutableList()
+        val idx = list.indexOfFirst { it.name == pkgName }
+        if (idx != -1) {
+            list[idx] = list[idx].copy(isInstalled = false)
+            _packages.value = list
+            addConsoleLog("Uninstalled package: $pkgName")
+        }
+    }
+
+    fun addTerminalLog(log: String) {
+        _terminalLogs.value = _terminalLogs.value + log
+    }
+
+    fun executeTerminalCommand(commandLine: String) {
+        val trimmed = commandLine.trim()
+        if (trimmed.isEmpty()) return
+        
+        // Log the entered command
+        val prompt = "${_currentUser.value.username}@sovereign:~$ "
+        addTerminalLog("$prompt$trimmed")
+        
+        val parts = trimmed.split("\\s+".toRegex())
+        val baseCmd = parts[0]
+        
+        when (baseCmd) {
+            "help" -> {
+                addTerminalLog("Sovereign OS Command Reference:")
+                addTerminalLog("  whoami                       - View currently logged in user")
+                addTerminalLog("  su <username> <password>     - Switch user session")
+                addTerminalLog("  sudo <command>               - Execute task with administrative rights")
+                addTerminalLog("  useradd <username> <pass>    - Register a new user account (Requires Sudo)")
+                addTerminalLog("  passwd <username> <new_pass> - Modify user account passwords")
+                addTerminalLog("  chmod <perms> <home_dir>     - Modify home folder permissions (e.g., chmod r-x home/guest)")
+                addTerminalLog("  pkg list                     - Display all available packages")
+                addTerminalLog("  pkg search <query>           - Filter package repository list")
+                addTerminalLog("  pkg install <pkg_name>       - Install a software package")
+                addTerminalLog("  pkg remove <pkg_name>        - Uninstall a software package")
+                addTerminalLog("  pkg update <pkg_name>        - Upgrade an installed package")
+                addTerminalLog("  clear                        - Clear terminal history")
+            }
+            "whoami" -> {
+                addTerminalLog(_currentUser.value.username)
+            }
+            "clear" -> {
+                _terminalLogs.value = emptyList()
+            }
+            "su" -> {
+                if (parts.size < 3) {
+                    addTerminalLog("Usage: su <username> <password>")
+                } else {
+                    val targetUser = parts[1]
+                    val pass = parts[2]
+                    val match = _users.value.find { it.username == targetUser }
+                    if (match == null) {
+                        addTerminalLog("su: Authentication failure (User not found)")
+                    } else if (match.passwordHash != pass) {
+                        addTerminalLog("su: Authentication failure (Incorrect password)")
+                    } else {
+                        _currentUser.value = match
+                        addTerminalLog("Session switched successfully to ${match.username}.")
+                    }
+                }
+            }
+            "useradd" -> {
+                val isSudo = _isSudoActive.value || _currentUser.value.isSudoer
+                if (!isSudo) {
+                    addTerminalLog("useradd: Permission denied (Requires sudo / admin privileges)")
+                } else if (parts.size < 3) {
+                    addTerminalLog("Usage: useradd <username> <password>")
+                } else {
+                    val name = parts[1]
+                    val pass = parts[2]
+                    if (_users.value.any { it.username == name }) {
+                        addTerminalLog("useradd: user '$name' already exists")
+                    } else {
+                        val newUser = SovereignUser(name, pass, false, "home/$name", "rwx")
+                        _users.value = _users.value + newUser
+                        
+                        // Register in virtual files
+                        val path = "home/$name/welcome.txt"
+                        val content = "Welcome to your home directory, $name!\nPermissions: rwx"
+                        val updatedFiles = _files.value.toMutableMap()
+                        updatedFiles[path] = content
+                        _files.value = updatedFiles
+                        
+                        addTerminalLog("User '$name' successfully added. Home directory initialized: home/$name")
+                    }
+                }
+                _isSudoActive.value = false
+            }
+            "passwd" -> {
+                if (parts.size < 3) {
+                    addTerminalLog("Usage: passwd <username> <new_password>")
+                } else {
+                    val name = parts[1]
+                    val pass = parts[2]
+                    val userIdx = _users.value.indexOfFirst { it.username == name }
+                    if (userIdx == -1) {
+                        addTerminalLog("passwd: user '$name' not found")
+                    } else {
+                        val user = _users.value[userIdx]
+                        val isSudo = _isSudoActive.value || _currentUser.value.isSudoer || _currentUser.value.username == name
+                        if (!isSudo) {
+                            addTerminalLog("passwd: Permission denied (You can only change your own password)")
+                        } else {
+                            val list = _users.value.toMutableList()
+                            list[userIdx] = user.copy(passwordHash = pass)
+                            _users.value = list
+                            addTerminalLog("Password successfully changed for user '$name'.")
+                        }
+                    }
+                }
+                _isSudoActive.value = false
+            }
+            "chmod" -> {
+                if (parts.size < 3) {
+                    addTerminalLog("Usage: chmod <permissions> <path>")
+                } else {
+                    val perms = parts[1]
+                    val dir = parts[2]
+                    val isSudo = _isSudoActive.value || _currentUser.value.isSudoer
+                    if (!isSudo) {
+                        addTerminalLog("chmod: Permission denied (Requires sudo / admin privileges)")
+                    } else {
+                        if (perms.length != 3 || perms.any { it != 'r' && it != 'w' && it != 'x' && it != '-' }) {
+                            addTerminalLog("chmod: Invalid permission format. Use like 'rwx', 'r-x', or 'r--'")
+                        } else {
+                            val username = dir.substringAfter("home/").trim()
+                            val userIdx = _users.value.indexOfFirst { it.username == username || it.homeDir == dir }
+                            if (userIdx == -1) {
+                                addTerminalLog("chmod: target home folder '$dir' not recognized")
+                            } else {
+                                val list = _users.value.toMutableList()
+                                val u = list[userIdx]
+                                u.permissions = perms
+                                _users.value = list
+                                addTerminalLog("Permissions updated successfully for '$dir' -> $perms")
+                            }
+                        }
+                    }
+                }
+                _isSudoActive.value = false
+            }
+            "sudo" -> {
+                if (parts.size < 2) {
+                    addTerminalLog("Usage: sudo <command>")
+                } else {
+                    if (!_currentUser.value.isSudoer) {
+                        addTerminalLog("sudo: ${_currentUser.value.username} is not in the sudoers file. This incident will be reported.")
+                    } else {
+                        _isSudoActive.value = true
+                        val subCmd = trimmed.substringAfter("sudo").trim()
+                        executeTerminalCommand(subCmd)
+                    }
+                }
+            }
+            "pkg" -> {
+                if (parts.size < 2) {
+                    addTerminalLog("Usage: pkg [list | search | install | remove | update]")
+                } else {
+                    val sub = parts[1]
+                    when (sub) {
+                        "list" -> {
+                            addTerminalLog("Sovereign OS Central Package Repository:")
+                            _packages.value.forEach { pkg ->
+                                val status = if (pkg.isInstalled) "[INSTALLED]" else "[AVAILABLE]"
+                                addTerminalLog("  - ${pkg.name} (${pkg.version}) - $status")
+                                addTerminalLog("    Description: ${pkg.description}")
+                            }
+                        }
+                        "search" -> {
+                            if (parts.size < 3) {
+                                addTerminalLog("Usage: pkg search <query>")
+                            } else {
+                                val query = parts[2].lowercase()
+                                val matches = _packages.value.filter { it.name.contains(query) || it.description.lowercase().contains(query) }
+                                if (matches.isEmpty()) {
+                                    addTerminalLog("No packages found matching '$query'.")
+                                } else {
+                                    addTerminalLog("Search results for '$query':")
+                                    matches.forEach { pkg ->
+                                        val status = if (pkg.isInstalled) "[INSTALLED]" else "[AVAILABLE]"
+                                        addTerminalLog("  - ${pkg.name} (${pkg.version}) - $status - ${pkg.description}")
+                                    }
+                                }
+                            }
+                        }
+                        "install" -> {
+                            if (parts.size < 3) {
+                                addTerminalLog("Usage: pkg install <pkg_name>")
+                            } else {
+                                val pkgName = parts[2]
+                                val pkgIdx = _packages.value.indexOfFirst { it.name == pkgName }
+                                if (pkgIdx == -1) {
+                                    addTerminalLog("pkg: package '$pkgName' not found in repositories.")
+                                } else if (_packages.value[pkgIdx].isInstalled) {
+                                    addTerminalLog("pkg: '$pkgName' is already installed.")
+                                } else {
+                                    val isSudo = _isSudoActive.value || _currentUser.value.isSudoer
+                                    if (!isSudo) {
+                                        addTerminalLog("pkg: Permission denied (Installing packages requires sudo)")
+                                    } else {
+                                        addTerminalLog("pkg: Connecting to Sovereign Core network servers...")
+                                        addTerminalLog("pkg: Downloading $pkgName (${_packages.value[pkgIdx].sizeKb} KB)...")
+                                        val list = _packages.value.toMutableList()
+                                        list[pkgIdx] = list[pkgIdx].copy(isInstalled = true)
+                                        _packages.value = list
+                                        addTerminalLog("pkg: Unpacking binary payloads and verifying secure signatures...")
+                                        addTerminalLog("pkg: SUCCESS! Package '$pkgName' is now registered and active.")
+                                        addConsoleLog("Installed package: $pkgName")
+                                    }
+                                }
+                            }
+                        }
+                        "remove", "uninstall" -> {
+                            if (parts.size < 3) {
+                                addTerminalLog("Usage: pkg remove <pkg_name>")
+                            } else {
+                                val pkgName = parts[2]
+                                val pkgIdx = _packages.value.indexOfFirst { it.name == pkgName }
+                                if (pkgIdx == -1) {
+                                    addTerminalLog("pkg: package '$pkgName' not found.")
+                                } else if (!_packages.value[pkgIdx].isInstalled) {
+                                    addTerminalLog("pkg: '$pkgName' is not installed.")
+                                } else {
+                                    val isSudo = _isSudoActive.value || _currentUser.value.isSudoer
+                                    if (!isSudo) {
+                                        addTerminalLog("pkg: Permission denied (Removing packages requires sudo)")
+                                    } else {
+                                        val list = _packages.value.toMutableList()
+                                        list[pkgIdx] = list[pkgIdx].copy(isInstalled = false)
+                                        _packages.value = list
+                                        addTerminalLog("pkg: Purging local state and configurations for '$pkgName'...")
+                                        addTerminalLog("pkg: Package '$pkgName' successfully removed.")
+                                        addConsoleLog("Uninstalled package: $pkgName")
+                                    }
+                                }
+                            }
+                        }
+                        "update" -> {
+                            if (parts.size < 3) {
+                                addTerminalLog("Usage: pkg update <pkg_name>")
+                            } else {
+                                val pkgName = parts[2]
+                                val pkgIdx = _packages.value.indexOfFirst { it.name == pkgName }
+                                if (pkgIdx == -1) {
+                                    addTerminalLog("pkg: package '$pkgName' not found.")
+                                } else if (!_packages.value[pkgIdx].isInstalled) {
+                                    addTerminalLog("pkg: '$pkgName' is not installed (Use 'pkg install $pkgName' first).")
+                                } else {
+                                    addTerminalLog("pkg: Checking for newer versions of '$pkgName'...")
+                                    addTerminalLog("pkg: Already at the latest version (${_packages.value[pkgIdx].version}).")
+                                }
+                            }
+                        }
+                        else -> {
+                            addTerminalLog("pkg: Unknown action '$sub'. Use pkg list/search/install/remove/update")
+                        }
+                    }
+                }
+                _isSudoActive.value = false
+            }
+            else -> {
+                addTerminalLog("bash: command not found: '$baseCmd'. Type 'help' for a list of valid routines.")
+            }
+        }
+        addTerminalLog("")
+    }
+
+    private fun addConsoleLog(message: String) {
+        val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        val time = sdf.format(Date())
+        _consoleLogs.value = listOf("[$time] $message") + _consoleLogs.value.take(20)
+    }
+
+    // Continual active simulation ticks
+    private fun startMetricsJob() {
+        metricsJob?.cancel()
+        metricsJob = viewModelScope.launch {
+            while (true) {
+                delay(2000)
+                if (_isBooted.value && !_isSelfTerminating.value) {
+                    // Jitter metrics realistically
+                    val lastCoh = _coherence.value
+                    // Slowly drift up to 0.999 coherence, with small random fluctuations
+                    val diff = 0.999f - lastCoh
+                    val jitter = (Random.nextFloat() - 0.35f) * 0.003f
+                    val newCoh = (lastCoh + (diff * 0.05f) + jitter).coerceIn(0.92f, 0.999f)
+                    _coherence.value = newCoh
+
+                    // Log history
+                    val hist = _coherenceHistory.value.toMutableList()
+                    hist.removeAt(0)
+                    hist.add(newCoh)
+                    _coherenceHistory.value = hist
+
+                    // Jitter sensors
+                    _barometerHpa.value = (1013.25f + (Random.nextFloat() - 0.5f) * 4f)
+                    _bciAttention.value = (0.80f + Random.nextFloat() * 0.19f).coerceIn(0f, 1f)
+                    _npuLoad.value = (25 + Random.nextInt(25)).coerceIn(0, 100)
+
+                    // Occasional random mesh logs
+                    if (Random.nextFloat() < 0.25f) {
+                        val events = listOf(
+                            "DHT routing table updated. Active nodes: ${_peerCount.value}.",
+                            "Time Crystal coherence index stable within < 0.0004% variance.",
+                            "Consensus round verified: BFT threshold met successfully.",
+                            "Schumann sync phase lock stabilized @ ${_timeCrystalFrequency.value} Hz.",
+                            "NFC Secure Enclave driver verified at address 0x60."
+                        )
+                        addConsoleLog(events.random())
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        metricsJob?.cancel()
+        logsJob?.cancel()
+        super.onCleared()
+    }
+}

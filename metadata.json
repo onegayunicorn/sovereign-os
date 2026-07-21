@@ -1,0 +1,6 @@
+{
+  "name": "Sovereign OS",
+  "description": "An immersive bootable system simulation and metrics dashboard for Sovereign Ecosystem Ω.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
