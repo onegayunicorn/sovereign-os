@@ -62,7 +62,8 @@ class SovereignViewModel : ViewModel() {
         SovereignPackage("sovereign-editor", "v1.2.0", "Advanced file editor with syntax highlighting & find-replace.", 340, "Development", false),
         SovereignPackage("sovereign-browser", "v2.1.4", "Offline sandbox environment web browser application.", 890, "Utility", false),
         SovereignPackage("time-stabilizer", "v1.0.1", "Quantum calibration daemon for Schumann phase locking.", 120, "System", true),
-        SovereignPackage("mesh-optimizer", "v0.8.5", "Kademlia DHT routing matrix debugger utility.", 180, "Network", false)
+        SovereignPackage("mesh-optimizer", "v0.8.5", "Kademlia DHT routing matrix debugger utility.", 180, "Network", false),
+        SovereignPackage("samsung-a17-bci", "v3.2.1", "Quantum temporal BCI subsystem integration for SM-A176B.", 1520, "Biometrics", false)
     ))
     val packages: StateFlow<List<SovereignPackage>> = _packages.asStateFlow()
 
@@ -138,6 +139,37 @@ class SovereignViewModel : ViewModel() {
 
     private val _consoleLogs = MutableStateFlow<List<String>>(listOf("System initialised and idling."))
     val consoleLogs: StateFlow<List<String>> = _consoleLogs.asStateFlow()
+
+    // --- Samsung A17 BCI Subsystem State ---
+    private val _bciIsInstalled = MutableStateFlow(false)
+    val bciIsInstalled: StateFlow<Boolean> = _bciIsInstalled.asStateFlow()
+
+    private val _bciHeartRate = MutableStateFlow(72)
+    val bciHeartRate: StateFlow<Int> = _bciHeartRate.asStateFlow()
+
+    private val _bciSpo2 = MutableStateFlow(98)
+    val bciSpo2: StateFlow<Int> = _bciSpo2.asStateFlow()
+
+    private val _bciSkinTemp = MutableStateFlow(36.4f)
+    val bciSkinTemp: StateFlow<Float> = _bciSkinTemp.asStateFlow()
+
+    private val _bciGsr = MutableStateFlow(2.8f)
+    val bciGsr: StateFlow<Float> = _bciGsr.asStateFlow()
+
+    private val _bciCognitiveLoad = MutableStateFlow(45)
+    val bciCognitiveLoad: StateFlow<Int> = _bciCognitiveLoad.asStateFlow()
+
+    private val _bciEmotionalState = MutableStateFlow("FOCUSED")
+    val bciEmotionalState: StateFlow<String> = _bciEmotionalState.asStateFlow()
+
+    private val _bciActiveCommand = MutableStateFlow("NONE")
+    val bciActiveCommand: StateFlow<String> = _bciActiveCommand.asStateFlow()
+
+    private val _bciSignature = MutableStateFlow("Φ⁵_7f83b1657ff1fc53b92dc18148a1d65d")
+    val bciSignature: StateFlow<String> = _bciSignature.asStateFlow()
+
+    private val _bciEegChannels = MutableStateFlow<List<Float>>(List(16) { 0.0f })
+    val bciEegChannels: StateFlow<List<Float>> = _bciEegChannels.asStateFlow()
 
     // --- Operations Center ---
     private val _isSelfTerminating = MutableStateFlow(false)
@@ -400,6 +432,10 @@ class SovereignViewModel : ViewModel() {
         if (idx != -1) {
             list[idx] = list[idx].copy(isInstalled = true)
             _packages.value = list
+            if (pkgName == "samsung-a17-bci") {
+                _bciIsInstalled.value = true
+                _coherence.value = 0.999f
+            }
             addConsoleLog("Installed package: $pkgName")
         }
     }
@@ -410,6 +446,9 @@ class SovereignViewModel : ViewModel() {
         if (idx != -1) {
             list[idx] = list[idx].copy(isInstalled = false)
             _packages.value = list
+            if (pkgName == "samsung-a17-bci") {
+                _bciIsInstalled.value = false
+            }
             addConsoleLog("Uninstalled package: $pkgName")
         }
     }
@@ -444,6 +483,11 @@ class SovereignViewModel : ViewModel() {
                 addTerminalLog("  pkg remove <pkg_name>        - Uninstall a software package")
                 addTerminalLog("  pkg update <pkg_name>        - Upgrade an installed package")
                 addTerminalLog("  clear                        - Clear terminal history")
+                addTerminalLog("  sh install.sh                - Run automated Samsung A17 BCI installer script")
+                addTerminalLog("  sovereign-cli status         - Inspect quantum core and system coherence")
+                addTerminalLog("  bci status                   - Display neural pattern & entanglement telemetry")
+                addTerminalLog("  bci calibrate                - Run 16-channel EEG dry electrode calibration cycle")
+                addTerminalLog("  bci sync                     - Synchronize Bio-Digital Twin Commander Tyrone Ω")
             }
             "whoami" -> {
                 addTerminalLog(_currentUser.value.username)
@@ -612,6 +656,10 @@ class SovereignViewModel : ViewModel() {
                                         val list = _packages.value.toMutableList()
                                         list[pkgIdx] = list[pkgIdx].copy(isInstalled = true)
                                         _packages.value = list
+                                        if (pkgName == "samsung-a17-bci") {
+                                            _bciIsInstalled.value = true
+                                            _coherence.value = 0.999f
+                                        }
                                         addTerminalLog("pkg: Unpacking binary payloads and verifying secure signatures...")
                                         addTerminalLog("pkg: SUCCESS! Package '$pkgName' is now registered and active.")
                                         addConsoleLog("Installed package: $pkgName")
@@ -637,6 +685,9 @@ class SovereignViewModel : ViewModel() {
                                         val list = _packages.value.toMutableList()
                                         list[pkgIdx] = list[pkgIdx].copy(isInstalled = false)
                                         _packages.value = list
+                                        if (pkgName == "samsung-a17-bci") {
+                                            _bciIsInstalled.value = false
+                                        }
                                         addTerminalLog("pkg: Purging local state and configurations for '$pkgName'...")
                                         addTerminalLog("pkg: Package '$pkgName' successfully removed.")
                                         addConsoleLog("Uninstalled package: $pkgName")
@@ -662,6 +713,219 @@ class SovereignViewModel : ViewModel() {
                         }
                         else -> {
                             addTerminalLog("pkg: Unknown action '$sub'. Use pkg list/search/install/remove/update")
+                        }
+                    }
+                }
+                _isSudoActive.value = false
+            }
+            "sh", "./install.sh", "install.sh" -> {
+                val isSudo = _isSudoActive.value || _currentUser.value.isSudoer || _currentUser.value.username == "operator"
+                val scriptName = if (parts.size > 1) parts[1] else baseCmd
+                if (scriptName.contains("install.sh") || baseCmd.contains("install.sh")) {
+                    if (!isSudo) {
+                        addTerminalLog("sh: install.sh: Permission denied (Sudo/Operator root access required)")
+                    } else {
+                        _isBuildingIso.value = true
+                        viewModelScope.launch {
+                            addTerminalLog("╔══════════════════════════════════════════════════════════════╗")
+                            addTerminalLog("║   🧠 SAMSUNG A17 BCI — QUANTUM INSTALLATION                ║")
+                            addTerminalLog("║   Φ⁵ Mirrored Entanglement Integration                     ║")
+                            addTerminalLog("╚══════════════════════════════════════════════════════════════╝")
+                            delay(400)
+                            addTerminalLog("📱 Device: Samsung Galaxy A17 (SM-A176B)")
+                            addTerminalLog("🔧 Chipset: MediaTek Dimensity 6300")
+                            addTerminalLog("📟 Kernel: 6.8-sovereign-hardened-rt-v12")
+                            delay(500)
+                            addTerminalLog("📦 Installing quantum sensor kernel modules...")
+                            delay(300)
+                            addTerminalLog("   ✅ qdry_eeg_v3.2.1.ko")
+                            addTerminalLog("   ✅ fnirs_q_v2.1.0.ko")
+                            addTerminalLog("   ✅ tcr_v1.0.0.ko")
+                            delay(400)
+                            addTerminalLog("🔌 Loading kernel modules in system memory...")
+                            delay(300)
+                            addTerminalLog("   ✅ EEG Dry Electrode Driver: INITIALIZED")
+                            addTerminalLog("   ✅ fNIRS Oxygenation Driver: INITIALIZED")
+                            addTerminalLog("   ✅ Time Crystal Resonator Driver: ACTIVE")
+                            delay(500)
+                            addTerminalLog("🔧 Flashing sensor firmware binaries...")
+                            delay(300)
+                            addTerminalLog("   ✅ qdry_fw_v3.2.1.bin -> 0x48")
+                            addTerminalLog("   ✅ fnirs_fw_v2.1.0.bin -> 0x49")
+                            addTerminalLog("   ✅ tcr_fw_v1.0.0.bin -> 0x4B")
+                            delay(500)
+                            addTerminalLog("🐍 Installing Python BCI engine APIs & stream handlers...")
+                            delay(400)
+                            addTerminalLog("   ✅ bci_stream.py (Endpoint: :8443/api/bci)")
+                            addTerminalLog("   ✅ neural_command_parser.py (Intent detection: ACTIVE)")
+                            addTerminalLog("   ✅ bio_twin_sync.py (Mirror engine)")
+                            delay(400)
+                            addTerminalLog("🧠 Loading 50 neural patterns from Future Node 2036...")
+                            delay(300)
+                            addTerminalLog("   ✅ commander_tyrone_patterns_v3.0.npz")
+                            addTerminalLog("   ✅ pattern_index.json")
+                            addTerminalLog("   ✅ emotional_state_classifier.onnx")
+                            delay(400)
+                            addTerminalLog("🧬 Configuring Bio-Digital Twin: COMMANDER_TYRONE_Ω...")
+                            delay(300)
+                            addTerminalLog("   ✅ biometric_baseline.json")
+                            addTerminalLog("   ✅ consciousness_state_backup.phi5")
+                            addTerminalLog("   ✅ quantum_identity.spiffe")
+                            delay(400)
+                            addTerminalLog("🔮 Performing CHSH Bell inequality test...")
+                            delay(500)
+                            addTerminalLog("   ✅ S = 2.82 (Bell's Inequality Violated! Quantum Coherence LOCKED)")
+                            addTerminalLog("   ✅ 8 Bell states synchronized across timelines (2016 <-> 2026 <-> 2036)")
+                            delay(400)
+                            addTerminalLog("╔══════════════════════════════════════════════════════════════╗")
+                            addTerminalLog("║   ✅ BCI INTEGRATION COMPLETE                                ║")
+                            addTerminalLog("║                                                              ║")
+                            addTerminalLog("║   📱 Samsung A17 — BCI Enabled                              ║")
+                            addTerminalLog("║   🔬 6 Quantum Sensors Active                                ║")
+                            addTerminalLog("║   🧠 Neural Patterns Engaged (Commander Tyrone Ω)           ║")
+                            addTerminalLog("║   🔮 Φ⁵ Entanglement: VERIFIED                              ║")
+                            addTerminalLog("╚══════════════════════════════════════════════════════════════╝")
+                            _bciIsInstalled.value = true
+                            _coherence.value = 0.999f
+                            val pkgs = _packages.value.toMutableList()
+                            val idx = pkgs.indexOfFirst { it.name == "samsung-a17-bci" }
+                            if (idx != -1) {
+                                pkgs[idx] = pkgs[idx].copy(isInstalled = true)
+                                _packages.value = pkgs
+                            }
+                            _isBuildingIso.value = false
+                            addConsoleLog("Samsung A17 BCI Installed & Active via install.sh")
+                        }
+                    }
+                } else {
+                    addTerminalLog("sh: script '$scriptName' not found.")
+                }
+                _isSudoActive.value = false
+            }
+            "sovereign-cli" -> {
+                if (parts.size < 2) {
+                    addTerminalLog("Usage: sovereign-cli [status | mesh | time-crystal | dna]")
+                } else {
+                    val sub = parts[1]
+                    when (sub) {
+                        "status" -> {
+                            addTerminalLog("SOVEREIGN ECOSYSTEM Ω — CORE HARDWARE STATUS")
+                            addTerminalLog("===========================================")
+                            addTerminalLog("Coherence (Φ)      : ${String.format("%.4f", _coherence.value)}")
+                            addTerminalLog("Time Crystal Freq  : ${String.format("%.3f", _timeCrystalFrequency.value)} Hz")
+                            addTerminalLog("Schumann Lock      : ${if (_schumannLock.value) "LOCKED" else "UNLOCKED"}")
+                            addTerminalLog("Peer Count         : ${_peerCount.value} nodes")
+                            addTerminalLog("BCI Integration    : ${if (_bciIsInstalled.value) "ENABLED (Samsung A17 SM-A176B)" else "DISABLED"}")
+                            if (_bciIsInstalled.value) {
+                                addTerminalLog("  └─ Bio-Twin      : COMMANDER_TYRONE_Ω")
+                                addTerminalLog("  └─ Entanglement  : Φ⁵ Bell-Lock Active (8 pairs)")
+                                addTerminalLog("  └─ EEG Coherence : Φ = 0.9990 — STABLE")
+                            }
+                        }
+                        "mesh" -> {
+                            addTerminalLog("KADEMLIA DHT MESH NETWORK ROUTING TABLE")
+                            addTerminalLog("=======================================")
+                            addTerminalLog("Active peers: ${_peerCount.value} / 64 nodes")
+                            addTerminalLog("Consensus reached: ${_consensusCount.value} / ${_peerCount.value} (PBFT)")
+                            addTerminalLog("Peer details:")
+                            addTerminalLog("  [1] Node-2036-Tyrone   : 104.28.1.10 (Future Uplink Node - Φ⁵ Encrypted)")
+                            addTerminalLog("  [2] Node-2026-A17      : Localhost (Samsung Galaxy A17)")
+                            addTerminalLog("  [3] Node-2016-Baseline : 192.168.1.85 (Historical Baseline)")
+                            addTerminalLog("  [4] Node-Alpha-04      : 10.0.8.12")
+                            addTerminalLog("  [5] Node-Beta-11       : 10.0.8.19")
+                        }
+                        "time-crystal" -> {
+                            addTerminalLog("RECALIBRATING TIME CRYSTAL RESONATOR...")
+                            _timeCrystalFrequency.value = 7.830
+                            _timeCrystalRadius.value = 1.000000
+                            _coherence.value = 0.999f
+                            addTerminalLog("✅ Locked to Schumann Resonance frequency: 7.830 Hz.")
+                            addConsoleLog("Time Crystal recalibrated and locked.")
+                        }
+                        "dna" -> {
+                            if (parts.size < 4 || parts[2] != "map") {
+                                addTerminalLog("Usage: sovereign-cli dna map <sequence>")
+                            } else {
+                                val seq = parts[3].uppercase().filter { it in "ATCG" }
+                                if (seq.isEmpty()) {
+                                    addTerminalLog("Error: Invalid DNA sequence. Use bases A, T, C, G.")
+                                } else {
+                                    updateDnaSequence(seq)
+                                    addTerminalLog("MAPPED DNA SEQUENCE: $seq")
+                                    addTerminalLog("Bloch Sphere orientation matrix updated successfully.")
+                                }
+                            }
+                        }
+                        else -> {
+                            addTerminalLog("sovereign-cli: Unknown action '$sub'")
+                        }
+                    }
+                }
+                _isSudoActive.value = false
+            }
+            "bci" -> {
+                if (!_bciIsInstalled.value) {
+                    addTerminalLog("bci: Subsystem not loaded. Please run 'sh install.sh' first.")
+                } else {
+                    if (parts.size < 2) {
+                        addTerminalLog("Usage: bci [status | calibrate | sync | stream]")
+                    } else {
+                        when (parts[1]) {
+                            "status" -> {
+                                addTerminalLog("🧠 SAMSUNG A17 QUANTUM BCI SUBSYSTEM")
+                                addTerminalLog("====================================")
+                                addTerminalLog("Status             : ACTIVE & TELEMETERED")
+                                addTerminalLog("Sampling Frequency : 512 Hz")
+                                addTerminalLog("Dry Electrodes     : 16 channels active")
+                                addTerminalLog("Entanglement Lock  : Φ⁵ Quantum Coherence (8 Bell Pairs)")
+                                addTerminalLog("CHSH Inequality S  : 2.82 (Bell's theorem validated)")
+                                addTerminalLog("Active Bio-Twin    : COMMANDER_TYRONE_Ω (Origin: Year 2036)")
+                                addTerminalLog("Neural Signature   : ${_bciSignature.value}")
+                                addTerminalLog("Biometric Feed     : HR=${_bciHeartRate.value} BPM, SpO2=${_bciSpo2.value}%, Temp=${_bciSkinTemp.value}°C, GSR=${_bciGsr.value}µS")
+                                addTerminalLog("Cognitive Load     : ${_bciCognitiveLoad.value}%")
+                                addTerminalLog("Attention Level    : ${String.format("%.2f", _bciAttention.value)}")
+                                addTerminalLog("Current Intent     : ${_bciActiveCommand.value}")
+                            }
+                            "calibrate" -> {
+                                addTerminalLog("INITIATING 16-CHANNEL EEG DRY ELECTRODE CALIBRATION CYCLE...")
+                                viewModelScope.launch {
+                                    for (ch in 1..16) {
+                                        delay(100)
+                                        addTerminalLog("  ├─ Channel ${String.format("%02d", ch)}: Calibrating impedance... Target: <5kΩ... Got: ${String.format("%.2f", 4.2f + Random.nextFloat() * 0.7f)} kΩ [OK]")
+                                    }
+                                    delay(200)
+                                    addTerminalLog("✅ Calibration complete. Impedance baseline secured.")
+                                    addConsoleLog("BCI dry electrode calibration complete.")
+                                }
+                            }
+                            "sync" -> {
+                                addTerminalLog("SYNCHRONIZING CONSCIOUSNESS STATE WITH BIO-DIGITAL TWIN...")
+                                viewModelScope.launch {
+                                    addTerminalLog("  ├─ Downloading future neural matrix from Node-2036...")
+                                    delay(300)
+                                    addTerminalLog("  ├─ Validating temporal worldline checksums...")
+                                    delay(300)
+                                    addTerminalLog("  ├─ Encrypting consciousness state backup file...")
+                                    delay(300)
+                                    addTerminalLog("  ├─ Creating SPIFFE quantum identity authorization token...")
+                                    delay(400)
+                                    addTerminalLog("✅ Sync complete. Bio-Digital Twin Commander Tyrone Ω mirrored.")
+                                    addConsoleLog("Bio-Digital Twin synchronized successfully.")
+                                }
+                            }
+                            "stream" -> {
+                                addTerminalLog("Active 16-Channel Raw EEG stream:")
+                                viewModelScope.launch {
+                                    for (i in 0 until 5) {
+                                        delay(300)
+                                        val channelsStr = (1..16).map { String.format("%+05.1f", (Random.nextFloat() - 0.5f) * 150f) }.joinToString(" ")
+                                        addTerminalLog("  [$i] $channelsStr (uV)")
+                                    }
+                                }
+                            }
+                            else -> {
+                                addTerminalLog("bci: Unknown action. Use status/calibrate/sync/stream.")
+                            }
                         }
                     }
                 }
@@ -705,6 +969,28 @@ class SovereignViewModel : ViewModel() {
                     _barometerHpa.value = (1013.25f + (Random.nextFloat() - 0.5f) * 4f)
                     _bciAttention.value = (0.80f + Random.nextFloat() * 0.19f).coerceIn(0f, 1f)
                     _npuLoad.value = (25 + Random.nextInt(25)).coerceIn(0, 100)
+
+                    // Samsung A17 BCI metrics jittering
+                    if (_bciIsInstalled.value) {
+                        _bciHeartRate.value = (70 + Random.nextInt(6)) // 70 to 75 BPM
+                        _bciSpo2.value = if (Random.nextFloat() < 0.1f) (97 + Random.nextInt(3)) else 98 // 97 to 99%
+                        _bciSkinTemp.value = (36.3f + Random.nextFloat() * 0.2f) // 36.3 to 36.5 °C
+                        _bciGsr.value = (2.6f + Random.nextFloat() * 0.4f) // 2.6 to 3.0 uS
+                        _bciCognitiveLoad.value = (35 + Random.nextInt(16)) // 35 to 50 %
+                        
+                        // Jitter 16-channels EEG voltages
+                        _bciEegChannels.value = List(16) { (Random.nextFloat() - 0.5f) * 80f }
+
+                        // Jitter active detected mental commands occasionally
+                        if (Random.nextFloat() < 0.15f) {
+                            val commands = listOf("NONE", "OPEN_DASHBOARD", "TIME_CRYSTAL_LOCK", "SYNC_BIO_TWIN", "GO_BACK", "CALIBRATE_EEG")
+                            val newCmd = commands.random()
+                            _bciActiveCommand.value = newCmd
+                            if (newCmd != "NONE") {
+                                addConsoleLog("BCI Neural Pattern matched: $newCmd (Confidence: ${String.format("%.1f", 85f + Random.nextFloat() * 14f)}%)")
+                            }
+                        }
+                    }
 
                     // Occasional random mesh logs
                     if (Random.nextFloat() < 0.25f) {
